@@ -1,3 +1,4 @@
-FROM nginx:alpine
-COPY index.html /usr/share/nginx/html/index.html
-EXPOSE 80
+FROM alpine:latest
+WORKDIR /app
+COPY app.txt .
+CMD ["sh", "-c", "echo Container started && cat /app/app.txt && tail -f /dev/null"]
