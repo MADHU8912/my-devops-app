@@ -1,0 +1,8 @@
+.git
+.gitignore
+Jenkinsfile
+release
+*.zip
+build-report.txt
+test-report.txt
+deploy-report.txt
