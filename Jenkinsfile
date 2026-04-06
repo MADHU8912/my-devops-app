@@ -8,7 +8,7 @@ pipeline {
     environment {
         APP_NAME       = 'my-devops-app'
         CONTAINER_NAME = 'my-devops-container'
-        HOST_PORT      = '8090'
+        HOST_PORT      = '8091'
         CONTAINER_PORT = '80'
         RELEASE_DIR    = 'release'
         ZIP_NAME       = 'my-devops-release.zip'
@@ -17,7 +17,6 @@ pipeline {
     stages {
         stage('Checkout SCM') {
             steps {
-                echo 'Checking out source code from GitHub...'
                 checkout scm
             }
         }
@@ -28,83 +27,103 @@ pipeline {
             }
         }
 
-        stage('Prepare Release Folder') {
+        stage('Build Report') {
             steps {
-                bat """
-                if exist %RELEASE_DIR% rmdir /s /q %RELEASE_DIR%
-                mkdir %RELEASE_DIR%
-                """
+                bat '''
+                echo Build successful> build-report.txt
+                type build-report.txt
+                '''
             }
         }
 
-        stage('Build Report') {
+        stage('Prepare Release Folder') {
             steps {
-                bat """
-                echo Build successful > build-report.txt
-                type build-report.txt
-                copy build-report.txt %RELEASE_DIR%\\build-report.txt
-                """
+                bat '''
+                if exist %RELEASE_DIR% rmdir /s /q %RELEASE_DIR%
+                mkdir %RELEASE_DIR%
+                '''
             }
         }
 
         stage('Test') {
             steps {
-                bat """
+                bat '''
                 if exist index.html (
-                    echo Test Passed > test-report.txt
+                    echo Test Passed> test-report.txt
                     type test-report.txt
-                    copy test-report.txt %RELEASE_DIR%\\test-report.txt
                 ) else (
-                    echo Test Failed
+                    echo index.html file missing
                     exit /b 1
                 )
-                """
+
+                if exist Dockerfile (
+                    echo Dockerfile found
+                ) else (
+                    echo Dockerfile missing
+                    exit /b 1
+                )
+                '''
             }
         }
 
         stage('Copy App Files') {
             steps {
-                bat """
-                copy index.html %RELEASE_DIR%\\index.html
-                copy Dockerfile %RELEASE_DIR%\\Dockerfile
-                """
+                bat '''
+                copy /Y index.html %RELEASE_DIR%\\
+                copy /Y Dockerfile %RELEASE_DIR%\\
+                copy /Y build-report.txt %RELEASE_DIR%\\
+                copy /Y test-report.txt %RELEASE_DIR%\\
+                dir %RELEASE_DIR%
+                '''
             }
         }
 
         stage('Package ZIP') {
             steps {
-                bat """
+                bat '''
                 if exist %ZIP_NAME% del /f /q %ZIP_NAME%
-                powershell -Command "Compress-Archive -Path %RELEASE_DIR%\\* -DestinationPath %ZIP_NAME% -Force"
-                """
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path '.\\%RELEASE_DIR%\\*' -DestinationPath '.\\%ZIP_NAME%' -Force"
+                if not exist %ZIP_NAME% (
+                    echo ZIP file was not created
+                    exit /b 1
+                )
+                dir
+                '''
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                bat 'docker build -t %APP_NAME% .'
+                bat '''
+                docker build -t %APP_NAME% .
+                '''
             }
         }
 
         stage('Remove Old Container') {
             steps {
-                bat 'docker rm -f %CONTAINER_NAME% || exit /b 0'
+                bat '''
+                docker rm -f %CONTAINER_NAME% 2>nul
+                exit /b 0
+                '''
             }
         }
 
         stage('Run Container') {
             steps {
-                bat 'docker run -d -p %HOST_PORT%:%CONTAINER_PORT% --name %CONTAINER_NAME% %APP_NAME%'
+                bat '''
+                docker run -d -p %HOST_PORT%:%CONTAINER_PORT% --name %CONTAINER_NAME% %APP_NAME%
+                '''
             }
         }
 
         stage('Deploy Report') {
             steps {
-                bat """
-                echo Deployment successful > deploy-report.txt
+                bat '''
+                echo Deployment successful on port %HOST_PORT%> deploy-report.txt
                 type deploy-report.txt
-                copy deploy-report.txt %RELEASE_DIR%\\deploy-report.txt
-                """
+                copy /Y deploy-report.txt %RELEASE_DIR%\\
+                '''
             }
         }
     }
@@ -116,10 +135,10 @@ pipeline {
         }
         failure {
             echo 'Pipeline failed'
+            bat 'docker ps -a'
         }
         always {
-            bat 'docker ps -a'
-            echo 'Pipeline finished'
+            bat 'dir'
         }
     }
 }
